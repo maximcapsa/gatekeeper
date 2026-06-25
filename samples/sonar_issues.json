@@ -1,0 +1,84 @@
+{
+  "project": "acme-payments-api",
+  "branch": "feature/checkout-v2",
+  "pullRequest": "142",
+  "issues": [
+    {
+      "key": "AYx1-001",
+      "rule": "python:S2076",
+      "severity": "CRITICAL",
+      "type": "VULNERABILITY",
+      "component": "app/db/queries.py",
+      "line": 88,
+      "message": "Change this code to not construct SQL queries directly from user-controlled data.",
+      "status": "OPEN",
+      "effort": "20min"
+    },
+    {
+      "key": "AYx1-002",
+      "rule": "python:S5042",
+      "severity": "BLOCKER",
+      "type": "BUG",
+      "component": "app/payments/charge.py",
+      "line": 41,
+      "message": "Refactor this code so this expression does not always evaluate to True; the refund branch is unreachable.",
+      "status": "OPEN",
+      "effort": "30min"
+    },
+    {
+      "key": "AYx1-003",
+      "rule": "python:S2083",
+      "severity": "MAJOR",
+      "type": "SECURITY_HOTSPOT",
+      "component": "app/files/upload.py",
+      "line": 27,
+      "message": "Make sure this file path is sanitized to prevent path traversal.",
+      "status": "OPEN",
+      "effort": "15min"
+    },
+    {
+      "key": "AYx1-004",
+      "rule": "python:S1192",
+      "severity": "MAJOR",
+      "type": "CODE_SMELL",
+      "component": "app/api/routes.py",
+      "line": 210,
+      "message": "Define a constant instead of duplicating this literal \"application/json\" 6 times.",
+      "status": "OPEN",
+      "effort": "10min"
+    },
+    {
+      "key": "AYx1-005",
+      "rule": "python:S125",
+      "severity": "MINOR",
+      "type": "CODE_SMELL",
+      "component": "app/utils/format.py",
+      "line": 12,
+      "message": "Remove this commented-out code.",
+      "status": "OPEN",
+      "effort": "2min"
+    },
+    {
+      "key": "AYx1-006",
+      "rule": "python:S1135",
+      "severity": "INFO",
+      "type": "CODE_SMELL",
+      "component": "app/utils/format.py",
+      "line": 34,
+      "message": "Complete the task associated to this \"TODO\" comment.",
+      "status": "OPEN",
+      "effort": "5min"
+    },
+    {
+      "key": "AYx1-007",
+      "rule": "python:S930",
+      "severity": "CRITICAL",
+      "type": "BUG",
+      "component": "app/payments/charge.py",
+      "line": 63,
+      "message": "Add the missing 'currency' argument; this call will raise at runtime.",
+      "status": "RESOLVED",
+      "effort": "5min"
+    }
+  ]
+}
