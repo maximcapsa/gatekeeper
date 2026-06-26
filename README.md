@@ -1,5 +1,8 @@
 # GateKeeper — AI code-quality gate for pull requests
 
+[![CI](https://github.com/maximcapsa/gatekeeper/actions/workflows/ci.yml/badge.svg)](https://github.com/maximcapsa/gatekeeper/actions/workflows/ci.yml)
+[![GateKeeper](https://github.com/maximcapsa/gatekeeper/actions/workflows/gatekeeper.yml/badge.svg)](https://github.com/maximcapsa/gatekeeper/actions/workflows/gatekeeper.yml)
+
 GateKeeper turns raw **SonarQube / SonarCloud** static-analysis findings into an
 actionable PR review and a merge **pass/fail gate**. A **LangGraph** multi-agent
 system — triage, security, fix-suggestion, and summarizer agents — runs behind a
@@ -10,9 +13,10 @@ Built as a DevOps portfolio project: CI/CD, a real quality gate, containerizatio
 Infrastructure-as-Code, and practical multi-agent AI — designed to run on the
 **AWS Free Tier** with a **free Groq** LLM backend.
 
-> **Status:** Milestone 1 complete — the multi-agent graph runs locally end-to-end
-> against a sample SonarQube payload (and offline in mock mode). AWS deployment and
-> live SonarCloud/CI wiring land in later milestones (see [Roadmap](#roadmap)).
+> **Status:** Milestones 1 & 4 complete — the multi-agent graph runs end-to-end, and
+> a GitHub Actions pipeline runs the gate on every pull request, posts a review
+> comment, and can block the merge. AWS deployment and live SonarCloud wiring land in
+> the remaining milestones (see [Roadmap](#roadmap)).
 
 ---
 
@@ -102,12 +106,34 @@ This project is deliberately engineered to cost ~nothing for a portfolio:
 
 ---
 
+## CI/CD
+
+Two GitHub Actions workflows:
+
+- **`ci.yml`** — runs `ruff` + `pytest` (mock mode) on every push and PR.
+- **`gatekeeper.yml`** — on each PR: runs the gate, posts a sticky review comment
+  with the findings/fixes, and (when enforcing) fails the check to block the merge.
+  Runs in **demo mode** out of the box (bundled sample) and switches to **live
+  SonarCloud** automatically once a token is configured.
+
+### Enable live SonarCloud + merge blocking
+
+1. Create a free SonarCloud project for this repo and note its **project key**.
+2. Update `sonar-project.properties` (`sonar.organization`, `sonar.projectKey`).
+3. In the repo settings add:
+   - secret **`SONAR_TOKEN`** (SonarCloud token)
+   - secret **`GROQ_API_KEY`** (for live LLM rationales/fixes; omit to run mock)
+   - variable **`SONAR_PROJECT_KEY`** (same key as above)
+   - variable **`GATEKEEPER_ENFORCE`** = `true` to fail the check on a bad gate
+4. Add a branch-protection rule on `main` requiring the **GateKeeper** check —
+   now a failed gate blocks the merge.
+
 ## Roadmap
 
 - [x] **M1** — Multi-agent LangGraph + FastAPI, runs locally against a sample payload
+- [x] **M4** — GitHub Actions pipeline: scan → gate → post PR comment → block merge
 - [ ] **M2** — Live SonarCloud integration (`/api/issues/search`) + diff-aware triage
 - [ ] **M3** — Containerize (Docker/ECR), deploy Lambda + API Gateway via Terraform
-- [ ] **M4** — GitHub Actions pipeline: scan → gate → post PR comment → block merge
 - [ ] **M5** — Observability (CloudWatch dashboards/alarms), run history in DynamoDB
 
 ---
@@ -115,16 +141,19 @@ This project is deliberately engineered to cost ~nothing for a portfolio:
 ## Project layout
 
 ```
+.github/workflows/   ci.yml (lint+tests) and gatekeeper.yml (PR gate)
 app/
   main.py            FastAPI app (/health, /review, /webhook/sonar)
+  cli.py             CI entrypoint: fetch -> gate -> report -> exit code
   config.py          settings + mock-mode toggle
   models.py          SonarQube + agent-output models, graph state
   llm.py             Groq client wrapper
   agents/
     graph.py         LangGraph wiring + run_review()
     triage.py  security.py  fix_suggest.py  summarizer.py
-  sonar/client.py    payload loading/parsing
+  sonar/client.py    sample loading + live SonarCloud fetch
 samples/             sample SonarQube payload
-scripts/run_local.py CLI runner
-tests/               offline (mock-mode) graph tests
+scripts/run_local.py local runner
+sonar-project.properties
+tests/               offline (mock-mode) graph + CLI tests
 ```
