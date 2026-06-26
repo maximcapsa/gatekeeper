@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars (gitignored) and adjust.
+aws_region   = "us-east-1"
+project_name = "gatekeeper"
+image_tag    = "latest"
+
+# Leave empty + force_mock = "true" to run the deployed API with zero LLM cost.
+# To enable live mode: paste a key and set force_mock = "false".
+groq_api_key = ""
+force_mock   = "true"

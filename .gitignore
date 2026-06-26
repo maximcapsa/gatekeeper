@@ -20,9 +20,10 @@ venv/
 *.tfstate.*
 *.tfvars
 
-# Personal workspace notes (not project code)
+# Personal workspace notes / tool config (not project code)
 claude.md
 CLAUDE.md
+.claude/
 
 # Editor / OS
 .vscode/

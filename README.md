@@ -13,10 +13,10 @@ Built as a DevOps portfolio project: CI/CD, a real quality gate, containerizatio
 Infrastructure-as-Code, and practical multi-agent AI — designed to run on the
 **AWS Free Tier** with a **free Groq** LLM backend.
 
-> **Status:** Milestones 1 & 4 complete — the multi-agent graph runs end-to-end, and
-> a GitHub Actions pipeline runs the gate on every pull request, posts a review
-> comment, and can block the merge. AWS deployment and live SonarCloud wiring land in
-> the remaining milestones (see [Roadmap](#roadmap)).
+> **Status:** Milestones 1, 3 & 4 complete — the multi-agent graph runs end-to-end, a
+> GitHub Actions pipeline runs the gate on every pull request, and the service is
+> deployable to AWS (Lambda container image + API Gateway) with one `make deploy`.
+> Live SonarCloud wiring is the remaining milestone (see [Roadmap](#roadmap)).
 
 ---
 
@@ -53,12 +53,12 @@ so it's auditable and reproducible. The LLM adds explanation and fixes on top.
 
 | Area | Choice |
 |---|---|
-| API | FastAPI (served on AWS Lambda via Mangum in a later milestone) |
+| API | FastAPI on AWS Lambda (container image) via Mangum |
 | Agent orchestration | LangGraph |
 | LLM | Groq (free tier) — `llama-3.1-8b-instant` / `llama-3.3-70b-versatile` |
 | Static analysis | SonarCloud (free for public repos) |
 | CI/CD | GitHub Actions (free for public repos) |
-| Infra (planned) | AWS Lambda + API Gateway + DynamoDB + S3 + ECR, via Terraform |
+| Infra | AWS Lambda + API Gateway + ECR + CloudWatch via Terraform |
 
 ---
 
@@ -128,12 +128,36 @@ Two GitHub Actions workflows:
 4. Add a branch-protection rule on `main` requiring the **GateKeeper** check —
    now a failed gate blocks the merge.
 
+## Deploy to AWS (Free Tier)
+
+The FastAPI service ships as an **AWS Lambda container image** behind **API
+Gateway (HTTP API)**, all provisioned with Terraform. Everything stays within the
+AWS Free Tier; the deployed API defaults to **mock mode** (no LLM cost).
+
+**Prerequisites:** AWS credentials configured, Docker running, Terraform installed.
+
+```bash
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars   # edit if needed
+make deploy        # ECR repo -> build & push image -> apply Lambda + API Gateway
+make url           # print the public API URL
+curl "$(make -s url)/health"
+make destroy       # tear it all down
+```
+
+`make deploy` runs in phases to solve the image/Lambda ordering: it creates the
+**ECR** repo first, **builds & pushes** the `linux/amd64` image, then applies the
+**Lambda + API Gateway**. To run the deployed API in live mode, set `groq_api_key`
+and `force_mock = "false"` in `terraform.tfvars`.
+
+**Free-tier footprint:** Lambda (1M req/mo), API Gateway HTTP API (1M req/mo, 12 mo),
+ECR (500 MB, 12 mo; a lifecycle policy keeps only the last 3 images), CloudWatch logs.
+
 ## Roadmap
 
 - [x] **M1** — Multi-agent LangGraph + FastAPI, runs locally against a sample payload
 - [x] **M4** — GitHub Actions pipeline: scan → gate → post PR comment → block merge
+- [x] **M3** — Containerize (Docker/ECR), deploy Lambda + API Gateway via Terraform
 - [ ] **M2** — Live SonarCloud integration (`/api/issues/search`) + diff-aware triage
-- [ ] **M3** — Containerize (Docker/ECR), deploy Lambda + API Gateway via Terraform
 - [ ] **M5** — Observability (CloudWatch dashboards/alarms), run history in DynamoDB
 
 ---
@@ -144,6 +168,7 @@ Two GitHub Actions workflows:
 .github/workflows/   ci.yml (lint+tests) and gatekeeper.yml (PR gate)
 app/
   main.py            FastAPI app (/health, /review, /webhook/sonar)
+  lambda_handler.py  Mangum adapter (Lambda entrypoint)
   cli.py             CI entrypoint: fetch -> gate -> report -> exit code
   config.py          settings + mock-mode toggle
   models.py          SonarQube + agent-output models, graph state
@@ -152,6 +177,9 @@ app/
     graph.py         LangGraph wiring + run_review()
     triage.py  security.py  fix_suggest.py  summarizer.py
   sonar/client.py    sample loading + live SonarCloud fetch
+terraform/           ECR, IAM, Lambda, API Gateway, CloudWatch (IaC)
+Dockerfile           Lambda container image
+Makefile             local + deploy targets
 samples/             sample SonarQube payload
 scripts/run_local.py local runner
 sonar-project.properties
