@@ -80,6 +80,12 @@ resource "aws_lambda_function" "this" {
     aws_iam_role_policy_attachment.lambda_logs,
     aws_cloudwatch_log_group.lambda,
   ]
+
+  # CI rolls the image via `aws lambda update-function-code`, so don't let
+  # Terraform fight it on the next apply.
+  lifecycle {
+    ignore_changes = [image_uri]
+  }
 }
 
 # ---------------------------------------------------------------------------

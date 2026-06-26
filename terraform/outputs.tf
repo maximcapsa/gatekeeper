@@ -11,3 +11,8 @@ output "api_url" {
 output "lambda_function_name" {
   value = aws_lambda_function.this.function_name
 }
+
+output "github_actions_role_arn" {
+  description = "Set this as the AWS_ROLE_ARN secret in the GitHub repo."
+  value       = aws_iam_role.github_actions.arn
+}

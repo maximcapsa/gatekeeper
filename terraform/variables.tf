@@ -46,3 +46,21 @@ variable "log_retention_days" {
   type        = number
   default     = 14
 }
+
+variable "github_owner" {
+  description = "GitHub org/user that owns the repo (for the OIDC trust policy)."
+  type        = string
+  default     = "maximcapsa"
+}
+
+variable "github_repo" {
+  description = "GitHub repository name (for the OIDC trust policy)."
+  type        = string
+  default     = "gatekeeper"
+}
+
+variable "github_branch" {
+  description = "Branch allowed to deploy via OIDC."
+  type        = string
+  default     = "main"
+}

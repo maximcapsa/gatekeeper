@@ -1,0 +1,7 @@
+# Copy to backend.hcl (gitignored) and fill in your state bucket + lock table.
+# Then: terraform init -backend-config=backend.hcl   (or `make tf-init`)
+bucket         = "<your-tfstate-bucket>"
+key            = "gatekeeper/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "<your-tfstate-lock-table>"
+encrypt        = true

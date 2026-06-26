@@ -137,7 +137,8 @@ AWS Free Tier; the deployed API defaults to **mock mode** (no LLM cost).
 **Prerequisites:** AWS credentials configured, Docker running, Terraform installed.
 
 ```bash
-cp terraform/terraform.tfvars.example terraform/terraform.tfvars   # edit if needed
+cp terraform/backend.hcl.example       terraform/backend.hcl          # S3 state bucket + lock table
+cp terraform/terraform.tfvars.example  terraform/terraform.tfvars     # edit if needed
 make deploy        # ECR repo -> build & push image -> apply Lambda + API Gateway
 make url           # print the public API URL
 curl "$(make -s url)/health"
@@ -146,11 +147,34 @@ make destroy       # tear it all down
 
 `make deploy` runs in phases to solve the image/Lambda ordering: it creates the
 **ECR** repo first, **builds & pushes** the `linux/amd64` image, then applies the
-**Lambda + API Gateway**. To run the deployed API in live mode, set `groq_api_key`
-and `force_mock = "false"` in `terraform.tfvars`.
+**Lambda + API Gateway**. Terraform state lives in **S3 + DynamoDB** (configured via
+`backend.hcl`) so the laptop and CI share it. To run the deployed API in live mode,
+set `groq_api_key` and `force_mock = "false"` in `terraform.tfvars`.
 
 **Free-tier footprint:** Lambda (1M req/mo), API Gateway HTTP API (1M req/mo, 12 mo),
 ECR (500 MB, 12 mo; a lifecycle policy keeps only the last 3 images), CloudWatch logs.
+
+### Continuous deployment (GitHub Actions + OIDC)
+
+Once the infrastructure exists, **[deploy.yml](.github/workflows/deploy.yml)** ships
+new code automatically on every push to `main` (when app/Docker files change):
+
+```
+push to main ─▶ assume AWS role via OIDC (no stored keys)
+             ─▶ docker build ─▶ Trivy scan (fail on fixable CRITICAL)
+             ─▶ push to ECR ─▶ aws lambda update-function-code
+```
+
+Authentication uses **OpenID Connect**: GitHub Actions exchanges a short-lived token
+for AWS credentials by assuming a least-privilege IAM role (ECR push + Lambda roll
+only) — there are no long-lived AWS keys in GitHub. Terraform creates that role and
+references the account's existing OIDC provider.
+
+**One-time setup after `make deploy`:**
+
+1. `make tf-init && terraform -chdir=terraform output -raw github_actions_role_arn`
+2. Add it as the repo **secret** `AWS_ROLE_ARN`.
+3. (Optional) Create a **`production`** environment with required reviewers to gate deploys.
 
 ## Roadmap
 
@@ -165,7 +189,7 @@ ECR (500 MB, 12 mo; a lifecycle policy keeps only the last 3 images), CloudWatch
 ## Project layout
 
 ```
-.github/workflows/   ci.yml (lint+tests) and gatekeeper.yml (PR gate)
+.github/workflows/   ci.yml (lint+tests), gatekeeper.yml (PR gate), deploy.yml (OIDC deploy)
 app/
   main.py            FastAPI app (/health, /review, /webhook/sonar)
   lambda_handler.py  Mangum adapter (Lambda entrypoint)
@@ -177,7 +201,7 @@ app/
     graph.py         LangGraph wiring + run_review()
     triage.py  security.py  fix_suggest.py  summarizer.py
   sonar/client.py    sample loading + live SonarCloud fetch
-terraform/           ECR, IAM, Lambda, API Gateway, CloudWatch (IaC)
+terraform/           ECR, IAM, Lambda, API Gateway, CloudWatch, OIDC role (IaC)
 Dockerfile           Lambda container image
 Makefile             local + deploy targets
 samples/             sample SonarQube payload

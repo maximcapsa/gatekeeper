@@ -1,0 +1,92 @@
+name: Deploy
+
+# Builds the container image and rolls the Lambda. Infrastructure itself is
+# managed by Terraform (run once via `make deploy`); this ships new code.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "Dockerfile"
+      - "requirements.txt"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write # required for OIDC token exchange
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: gatekeeper
+  LAMBDA_FUNCTION: gatekeeper
+
+jobs:
+  deploy:
+    name: Build, scan, push, deploy
+    runs-on: ubuntu-latest
+    # Gated promotion: waits for approval if the "production" environment has
+    # required reviewers configured in repo settings.
+    environment:
+      name: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC — no static keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and tag image
+        id: build
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build --platform linux/amd64 -t $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag  $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      # Informational: surface HIGH/CRITICAL CVEs in the log.
+      - name: Trivy image scan — report (non-blocking)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.build.outputs.image }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"
+
+      # Gate: block the deploy on fixable CRITICAL CVEs before the image
+      # reaches Lambda. ignore-unfixed avoids failing on unpatchable base-OS CVEs.
+      - name: Trivy image scan — fail on fixable CRITICAL
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.build.outputs.image }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          vuln-type: os,library
+          exit-code: "1"
+
+      - name: Push image to ECR
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker push $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Deploy image to Lambda
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+        run: |
+          aws lambda update-function-code \
+            --function-name "$LAMBDA_FUNCTION" \
+            --image-uri "$IMAGE" \
+            --publish
+          aws lambda wait function-updated --function-name "$LAMBDA_FUNCTION"
+          echo "Deployed $IMAGE to $LAMBDA_FUNCTION"

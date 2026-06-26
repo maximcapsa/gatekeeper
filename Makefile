@@ -32,7 +32,7 @@ run:
 
 # ---- Infra / deploy ----
 tf-init:
-	$(TF) init
+	$(TF) init -backend-config=backend.hcl
 
 tf-validate: tf-init
 	$(TF) validate

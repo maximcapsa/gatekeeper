@@ -14,11 +14,12 @@ venv/
 .env
 *.local
 
-# AWS / Terraform (added in later milestones)
+# AWS / Terraform
 .terraform/
 *.tfstate
 *.tfstate.*
 *.tfvars
+backend.hcl
 
 # Personal workspace notes / tool config (not project code)
 claude.md
