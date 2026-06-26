@@ -41,9 +41,9 @@ tf-validate: tf-init
 ecr: tf-init
 	$(TF) apply -target=aws_ecr_repository.this -auto-approve
 
-# 2) Build the Lambda container image (linux/amd64 for Lambda).
+# 2) Build the Lambda container image (single-arch linux/amd64 for Lambda).
 build:
-	docker build --platform linux/amd64 -t $(IMAGE):$(TAG) .
+	docker build --provenance=false --platform linux/amd64 -t $(IMAGE):$(TAG) .
 
 # 3) Log in to ECR and push.
 push: ecr build

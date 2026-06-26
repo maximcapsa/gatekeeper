@@ -48,7 +48,10 @@ jobs:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build --platform linux/amd64 -t $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          # --provenance=false: produce a single-arch manifest (Lambda rejects
+          # the multi-arch manifest list BuildKit emits by default).
+          docker build --provenance=false --platform linux/amd64 \
+            -t $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker tag  $REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $REGISTRY/$ECR_REPOSITORY:latest
           echo "image=$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
