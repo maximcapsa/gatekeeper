@@ -210,3 +210,5 @@ scripts/run_local.py local runner
 sonar-project.properties
 tests/               offline (mock-mode) graph + CLI tests
 ```
+
+<!-- diff-aware demo: a docs-only PR introduces no new SonarCloud issues -->
