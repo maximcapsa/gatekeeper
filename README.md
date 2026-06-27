@@ -210,3 +210,7 @@ scripts/run_local.py local runner
 sonar-project.properties
 tests/               offline (mock-mode) graph + CLI tests
 ```
+
+## Live demo
+
+Deployed API: `https://5nshslxr3h.execute-api.us-east-1.amazonaws.com` (`/health`, `/review`).
