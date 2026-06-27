@@ -20,11 +20,16 @@ from pathlib import Path
 
 from app.agents.graph import run_review
 from app.models import SonarReport
-from app.sonar.client import DEFAULT_HOST, fetch_report, load_sample
+from app.sonar.client import DEFAULT_HOST, fetch_report, load_sample, wait_for_pr_analysis
 
 _DEMO_NOTE = (
     "> ⚠️ **Demo data** — running against the bundled sample payload. "
     "Set `SONAR_TOKEN` + `SONAR_PROJECT_KEY` to gate on live SonarCloud findings.\n\n"
+)
+
+_DIFF_NOTE = (
+    "> 🔎 **Diff-aware** — gating only on issues SonarCloud attributes to this "
+    "pull request's new code.\n\n"
 )
 
 
@@ -37,17 +42,18 @@ def _resolve_source(args: argparse.Namespace) -> str:
     return "sonarcloud" if has_creds else "sample"
 
 
-def _load_report(args: argparse.Namespace, source: str) -> SonarReport:
+def _load_report(args: argparse.Namespace, source: str, pr: str | None) -> SonarReport:
     if source == "file":
         if not args.file:
             raise ValueError("--file is required when --source=file")
         return SonarReport.model_validate(json.loads(Path(args.file).read_text(encoding="utf-8")))
     if source == "sonarcloud":
-        return fetch_report(
-            project_key=args.project_key or os.getenv("SONAR_PROJECT_KEY", ""),
-            pull_request=args.pull_request or os.getenv("PR_NUMBER"),
-            host=args.host,
-        )
+        project_key = args.project_key or os.getenv("SONAR_PROJECT_KEY", "")
+        if pr:
+            # Diff-aware: wait for SonarCloud's PR analysis, then fetch PR-scoped issues.
+            ready = wait_for_pr_analysis(project_key, pr, host=args.host)
+            print(f"PR analysis ready: {ready}", file=sys.stderr)
+        return fetch_report(project_key=project_key, pull_request=pr, host=args.host)
     return load_sample()
 
 
@@ -81,11 +87,17 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.reconfigure(encoding="utf-8")
 
     source = _resolve_source(args)
+    pr = args.pull_request or os.getenv("PR_NUMBER")
     try:
-        report = _load_report(args, source)
+        report = _load_report(args, source, pr)
         result = run_review(report)
         gate, reason = result.gate, result.reason
-        markdown = (_DEMO_NOTE if source == "sample" else "") + result.summary_markdown
+        note = ""
+        if source == "sample":
+            note = _DEMO_NOTE
+        elif source == "sonarcloud" and pr:
+            note = _DIFF_NOTE
+        markdown = note + result.summary_markdown
     except Exception as exc:  # keep CI green-path: always produce a report to comment
         gate, reason = "ERROR", f"GateKeeper could not evaluate findings: {exc}"
         markdown = f"## ⚠️ GateKeeper — ERROR\n\n_{reason}_\n"

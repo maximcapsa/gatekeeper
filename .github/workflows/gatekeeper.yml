@@ -18,6 +18,8 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_HOST_URL: https://sonarcloud.io
       SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+      # Diff-aware: gate only on issues new in this PR.
+      PR_NUMBER: ${{ github.event.pull_request.number }}
       # Set repo variable GATEKEEPER_ENFORCE=true to block merges on a failed gate.
       GATEKEEPER_ENFORCE: ${{ vars.GATEKEEPER_ENFORCE || 'false' }}
     steps:

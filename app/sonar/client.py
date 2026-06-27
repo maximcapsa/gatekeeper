@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import httpx
@@ -90,3 +91,48 @@ def fetch_report(
         pull_request=str(pull_request) if pull_request else None,
         issues=issues,
     )
+
+
+def pr_analysis_ready(
+    project_key: str,
+    pull_request: str,
+    host: str = DEFAULT_HOST,
+    token: str | None = None,
+) -> bool:
+    """True once SonarCloud has analyzed this pull request at least once."""
+    token = token or os.getenv("SONAR_TOKEN")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    with httpx.Client(timeout=30) as client:
+        resp = client.get(
+            f"{host}/api/project_pull_requests/list",
+            params={"project": project_key},
+            headers=headers,
+        )
+        if resp.status_code != 200:
+            return False
+        for pr in resp.json().get("pullRequests", []):
+            if str(pr.get("key")) == str(pull_request) and pr.get("analysisDate"):
+                return True
+    return False
+
+
+def wait_for_pr_analysis(
+    project_key: str,
+    pull_request: str,
+    host: str = DEFAULT_HOST,
+    token: str | None = None,
+    timeout_s: float = 120,
+    interval_s: float = 8,
+) -> bool:
+    """Poll until the PR has a SonarCloud analysis, or the timeout elapses.
+
+    Avoids the race where the gate fetches findings before automatic analysis
+    of the PR has landed. Best-effort: returns False on timeout so the caller
+    can proceed anyway.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if pr_analysis_ready(project_key, pull_request, host, token):
+            return True
+        time.sleep(interval_s)
+    return False
