@@ -13,10 +13,10 @@ Built as a DevOps portfolio project: CI/CD, a real quality gate, containerizatio
 Infrastructure-as-Code, and practical multi-agent AI — designed to run on the
 **AWS Free Tier** with a **free Groq** LLM backend.
 
-> **Status:** Milestones 1, 3 & 4 complete — the multi-agent graph runs end-to-end, a
-> GitHub Actions pipeline runs the gate on every pull request, and the service is
-> deployable to AWS (Lambda container image + API Gateway) with one `make deploy`.
-> Live SonarCloud wiring is the remaining milestone (see [Roadmap](#roadmap)).
+> **Status:** Live end-to-end. The multi-agent gate runs on every pull request
+> against **real SonarCloud findings** (posting an AI-written review and blocking the
+> merge), and the FastAPI service is deployed on **AWS** (Lambda container image +
+> API Gateway) with GitHub Actions + OIDC continuous deployment. See [Roadmap](#roadmap).
 
 ---
 
@@ -111,10 +111,10 @@ This project is deliberately engineered to cost ~nothing for a portfolio:
 Two GitHub Actions workflows:
 
 - **`ci.yml`** — runs `ruff` + `pytest` (mock mode) on every push and PR.
-- **`gatekeeper.yml`** — on each PR: runs the gate, posts a sticky review comment
-  with the findings/fixes, and (when enforcing) fails the check to block the merge.
-  Runs in **demo mode** out of the box (bundled sample) and switches to **live
-  SonarCloud** automatically once a token is configured.
+- **`gatekeeper.yml`** — on each PR: pulls **live SonarCloud findings** (from its
+  automatic analysis) via `/api/issues/search`, runs the agent gate, posts a sticky
+  review comment with AI rationales/fixes, and (when enforcing) fails the check to
+  block the merge. Falls back to the bundled sample when no `SONAR_TOKEN` is set.
 
 ### Enable live SonarCloud + merge blocking
 
