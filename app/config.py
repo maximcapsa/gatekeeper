@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     groq_api_key: str | None = None
     force_mock: bool = False
 
+    # GitHub App (webhook → Check Run flow). Empty in mock/local mode.
+    github_app_id: str | None = None
+    github_app_private_key_b64: str | None = None  # base64-encoded PEM
+    github_webhook_secret: str | None = None
+
     # Model routing: cheap/fast models for triage-style work, a stronger model for fixes.
     model_triage: str = "llama-3.1-8b-instant"
     model_security: str = "llama-3.1-8b-instant"

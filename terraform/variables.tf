@@ -29,6 +29,33 @@ variable "force_mock" {
   default     = "true"
 }
 
+variable "sonar_token" {
+  description = "SonarCloud token (lets the Lambda fetch findings for the GitHub App flow)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "github_app_id" {
+  description = "GitHub App ID for the webhook → Check Run flow."
+  type        = string
+  default     = ""
+}
+
+variable "github_app_private_key_b64" {
+  description = "Base64-encoded PEM private key for the GitHub App."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "github_webhook_secret" {
+  description = "Shared secret for verifying GitHub webhook signatures."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "lambda_memory_mb" {
   description = "Lambda memory size (MB)."
   type        = number

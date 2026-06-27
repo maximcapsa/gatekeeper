@@ -52,6 +52,20 @@ resource "aws_iam_role_policy_attachment" "lambda_logs" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# Lets the webhook handler fire the gate asynchronously by invoking itself.
+resource "aws_iam_role_policy" "lambda_self_invoke" {
+  name = "${var.project_name}-self-invoke"
+  role = aws_iam_role.lambda.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
+      Resource = aws_lambda_function.this.arn
+    }]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${var.project_name}"
   retention_in_days = var.log_retention_days
@@ -71,8 +85,13 @@ resource "aws_lambda_function" "this" {
 
   environment {
     variables = {
-      GROQ_API_KEY = var.groq_api_key
-      FORCE_MOCK   = var.force_mock
+      GROQ_API_KEY               = var.groq_api_key
+      FORCE_MOCK                 = var.force_mock
+      SONAR_TOKEN                = var.sonar_token
+      SONAR_HOST_URL             = "https://sonarcloud.io"
+      GITHUB_APP_ID              = var.github_app_id
+      GITHUB_APP_PRIVATE_KEY_B64 = var.github_app_private_key_b64
+      GITHUB_WEBHOOK_SECRET      = var.github_webhook_secret
     }
   }
 

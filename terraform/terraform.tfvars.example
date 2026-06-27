@@ -7,3 +7,12 @@ image_tag    = "latest"
 # To enable live mode: paste a key and set force_mock = "false".
 groq_api_key = ""
 force_mock   = "true"
+
+# SonarCloud token — lets the deployed Lambda fetch findings (GitHub App flow).
+sonar_token = ""
+
+# GitHub App (webhook → Check Run). Fill after registering the App.
+# Base64-encode the downloaded PEM: base64 -w0 your-app.private-key.pem
+github_app_id              = ""
+github_app_private_key_b64 = ""
+github_webhook_secret      = ""
