@@ -210,3 +210,5 @@ scripts/run_local.py local runner
 sonar-project.properties
 tests/               offline (mock-mode) graph + CLI tests
 ```
+
+<!-- GitHub App webhook demo: Check Run posted by the Lambda -->
