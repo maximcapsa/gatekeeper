@@ -50,8 +50,11 @@ def triage_node(state: GraphState) -> GraphState:
     for priority, issue in enumerate(ranked):
         rationale = _mock_rationale(issue)
         if not settings.use_mock:
-            data = chat_json(SYSTEM, _user_prompt(issue), settings.model_triage)
-            rationale = data.get("rationale") or rationale
+            try:
+                data = chat_json(SYSTEM, _user_prompt(issue), settings.model_triage)
+                rationale = data.get("rationale") or rationale
+            except Exception:
+                pass  # fall back to the deterministic rationale on any LLM error
         triaged.append(TriagedIssue(issue=issue, priority=priority, rationale=rationale))
 
     return {"triaged": triaged}

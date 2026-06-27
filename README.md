@@ -179,10 +179,11 @@ references the account's existing OIDC provider.
 ## Roadmap
 
 - [x] **M1** — Multi-agent LangGraph + FastAPI, runs locally against a sample payload
-- [x] **M4** — GitHub Actions pipeline: scan → gate → post PR comment → block merge
+- [x] **M4** — GitHub Actions pipeline: gate → post PR comment → block merge
 - [x] **M3** — Containerize (Docker/ECR), deploy Lambda + API Gateway via Terraform
-- [ ] **M2** — Live SonarCloud integration (`/api/issues/search`) + diff-aware triage
+- [x] **M2** — Live SonarCloud integration (`/api/issues/search`) on real findings
 - [ ] **M5** — Observability (CloudWatch dashboards/alarms), run history in DynamoDB
+- [ ] Enhancement — diff-aware triage (flag only issues new in the PR)
 
 ---
 

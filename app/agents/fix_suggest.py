@@ -53,13 +53,16 @@ def fix_suggest_node(state: GraphState) -> GraphState:
     for t in targets:
         fix = _mock_fix(t)
         if not settings.use_mock:
-            data = chat_json(SYSTEM, _user_prompt(t), settings.model_fix)
-            fix = FixSuggestion(
-                issue_key=t.issue.key,
-                component=t.issue.component,
-                summary=data.get("summary") or fix.summary,
-                patch=data.get("patch") or fix.patch,
-            )
+            try:
+                data = chat_json(SYSTEM, _user_prompt(t), settings.model_fix)
+                fix = FixSuggestion(
+                    issue_key=t.issue.key,
+                    component=t.issue.component,
+                    summary=data.get("summary") or fix.summary,
+                    patch=data.get("patch") or fix.patch,
+                )
+            except Exception:
+                pass  # fall back to the templated fix on any LLM error
         suggestions.append(fix)
 
     return {"fix_suggestions": suggestions}

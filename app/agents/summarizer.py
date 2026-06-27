@@ -105,12 +105,15 @@ def summarizer_node(state: GraphState) -> GraphState:
 
     headline = reason
     if not settings.use_mock:
-        data = chat_json(
-            HEADLINE_SYSTEM,
-            f"Gate: {gate}. {reason} Project {report.project} has {len(triaged)} open findings.",
-            settings.model_summary,
-        )
-        headline = data.get("headline") or reason
+        try:
+            user = (
+                f"Gate: {gate}. {reason} "
+                f"Project {report.project} has {len(triaged)} open findings."
+            )
+            data = chat_json(HEADLINE_SYSTEM, user, settings.model_summary)
+            headline = data.get("headline") or reason
+        except Exception:
+            pass  # fall back to the reason string on any LLM error
 
     summary_markdown = _render_markdown(
         report.project, gate, reason, headline, triaged, security, fixes
