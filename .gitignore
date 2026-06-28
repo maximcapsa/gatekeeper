@@ -13,6 +13,8 @@ venv/
 # Env / secrets
 .env
 *.local
+*.pem
+private key/
 
 # AWS / Terraform
 .terraform/

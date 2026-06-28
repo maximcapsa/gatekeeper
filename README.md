@@ -1,7 +1,7 @@
 # GateKeeper — AI code-quality gate for pull requests
 
 [![CI](https://github.com/maximcapsa/gatekeeper/actions/workflows/ci.yml/badge.svg)](https://github.com/maximcapsa/gatekeeper/actions/workflows/ci.yml)
-[![GateKeeper](https://github.com/maximcapsa/gatekeeper/actions/workflows/gatekeeper.yml/badge.svg)](https://github.com/maximcapsa/gatekeeper/actions/workflows/gatekeeper.yml)
+[![Deploy](https://github.com/maximcapsa/gatekeeper/actions/workflows/deploy.yml/badge.svg)](https://github.com/maximcapsa/gatekeeper/actions/workflows/deploy.yml)
 
 GateKeeper turns raw **SonarQube / SonarCloud** static-analysis findings into an
 actionable PR review and a merge **pass/fail gate**. A **LangGraph** multi-agent
@@ -13,10 +13,11 @@ Built as a DevOps portfolio project: CI/CD, a real quality gate, containerizatio
 Infrastructure-as-Code, and practical multi-agent AI — designed to run on the
 **AWS Free Tier** with a **free Groq** LLM backend.
 
-> **Status:** Live end-to-end. The multi-agent gate runs on every pull request
-> against **real SonarCloud findings** (posting an AI-written review and blocking the
-> merge), and the FastAPI service is deployed on **AWS** (Lambda container image +
-> API Gateway) with GitHub Actions + OIDC continuous deployment. See [Roadmap](#roadmap).
+> **Status:** Live end-to-end. GateKeeper is installed as a **GitHub App**: every pull
+> request fires a webhook to the FastAPI service on **AWS** (Lambda container image +
+> API Gateway), which triages the **real SonarCloud findings** and posts an AI-written
+> **Check Run** that passes or blocks the merge. Continuous deployment runs via GitHub
+> Actions + OIDC. See [Roadmap](#roadmap).
 
 ---
 
@@ -30,7 +31,7 @@ PR opened ─▶ CI (GitHub Actions) ─▶ SonarCloud scan ─▶ webhook ─�
                                                      triage  security  fix_suggest  summarizer
                                                         └──────┴─────────┴───────────┘
                                                                       │
-                                            PR review comment + pass/fail merge gate
+                                       Check Run posted to the PR = pass/fail merge gate
 ```
 
 **The graph:** `START → triage → security → (fix_suggest?) → summarizer → END`.
@@ -108,25 +109,35 @@ This project is deliberately engineered to cost ~nothing for a portfolio:
 
 ## CI/CD
 
-Two GitHub Actions workflows:
+The PR gate runs as a **GitHub App**, not an Actions job — so any repo gets gated by
+**installing the App**, with no per-repo workflow to copy. GitHub Actions is used only
+for tests and deployment:
 
 - **`ci.yml`** — runs `ruff` + `pytest` (mock mode) on every push and PR.
-- **`gatekeeper.yml`** — on each PR: pulls **live SonarCloud findings** (from its
-  automatic analysis) via `/api/issues/search`, runs the agent gate, posts a sticky
-  review comment with AI rationales/fixes, and (when enforcing) fails the check to
-  block the merge. Falls back to the bundled sample when no `SONAR_TOKEN` is set.
+- **`deploy.yml`** — builds, scans, and rolls the Lambda image on every push to `main`
+  (see [Deploy to AWS](#deploy-to-aws-free-tier)).
 
-### Enable live SonarCloud + merge blocking
+### The gate: GitHub App → Check Run
 
-1. Create a free SonarCloud project for this repo and note its **project key**.
-2. Update `sonar-project.properties` (`sonar.organization`, `sonar.projectKey`).
-3. In the repo settings add:
-   - secret **`SONAR_TOKEN`** (SonarCloud token)
-   - secret **`GROQ_API_KEY`** (for live LLM rationales/fixes; omit to run mock)
-   - variable **`SONAR_PROJECT_KEY`** (same key as above)
-   - variable **`GATEKEEPER_ENFORCE`** = `true` to fail the check on a bad gate
-4. Add a branch-protection rule on `main` requiring the **GateKeeper** check —
-   now a failed gate blocks the merge.
+```
+PR opened ─▶ GitHub webhook ─▶ API Gateway ─▶ Lambda (verifies HMAC, returns 200 fast)
+          ─▶ Lambda self-invokes async ─▶ waits for SonarCloud's PR analysis
+          ─▶ runs the agent graph ─▶ posts a GateKeeper Check Run (success / failure)
+```
+
+The webhook handler answers within GitHub's 10s budget and fires the slow gate in a
+separate async Lambda invocation, so the Check Run never times out. The Check Run is a
+first-class status — branch protection can **require** it to block merges.
+
+### Install the gate on a repo
+
+1. Create a free SonarCloud project for the repo (project key `owner_repo`) so its PRs
+   get analyzed automatically.
+2. **Install the GateKeeper GitHub App** on the repo (the App's webhook points at the
+   deployed API Gateway URL; its `GITHUB_APP_ID`, private key, and webhook secret live
+   in the Lambda's env, set from `terraform.tfvars`).
+3. Add a branch-protection rule on `main` requiring the **GateKeeper** check — a failed
+   gate now blocks the merge.
 
 ## Deploy to AWS (Free Tier)
 
@@ -182,18 +193,21 @@ references the account's existing OIDC provider.
 - [x] **M4** — GitHub Actions pipeline: gate → post PR comment → block merge
 - [x] **M3** — Containerize (Docker/ECR), deploy Lambda + API Gateway via Terraform
 - [x] **M2** — Live SonarCloud integration (`/api/issues/search`) on real findings
+- [x] Enhancement — diff-aware triage (flag only issues new in the PR)
+- [x] **P1** — Installable **GitHub App**: webhook → Lambda → **Check Run** gate
+- [ ] **P2** — Multi-tenant: per-repo `.gatekeeper.yml`, config in DynamoDB, Secrets Manager
 - [ ] **M5** — Observability (CloudWatch dashboards/alarms), run history in DynamoDB
-- [ ] Enhancement — diff-aware triage (flag only issues new in the PR)
 
 ---
 
 ## Project layout
 
 ```
-.github/workflows/   ci.yml (lint+tests), gatekeeper.yml (PR gate), deploy.yml (OIDC deploy)
+.github/workflows/   ci.yml (lint+tests), deploy.yml (OIDC deploy)
 app/
-  main.py            FastAPI app (/health, /review, /webhook/sonar)
-  lambda_handler.py  Mangum adapter (Lambda entrypoint)
+  main.py            FastAPI app (/health, /review, /webhook/sonar, /webhook/github)
+  github/            GitHub App: webhook verify, auth (JWT/token), checks, worker
+  lambda_handler.py  Mangum adapter + async gate worker (Lambda entrypoint)
   cli.py             CI entrypoint: fetch -> gate -> report -> exit code
   config.py          settings + mock-mode toggle
   models.py          SonarQube + agent-output models, graph state
