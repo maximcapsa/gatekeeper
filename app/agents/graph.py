@@ -14,12 +14,12 @@ from app.agents.fix_suggest import fix_suggest_node
 from app.agents.security import security_node
 from app.agents.summarizer import summarizer_node
 from app.agents.triage import triage_node
-from app.config import get_settings
 from app.models import GraphState, ReviewResult, SonarReport
+from app.policy import DEFAULT_POLICY, GatePolicy
 
 
 def _needs_fix(state: GraphState) -> str:
-    blocking = get_settings().blocking_severities
+    blocking = state["policy"].blocking_severities
     if any(t.issue.severity in blocking for t in state.get("triaged", [])):
         return "fix"
     return "skip"
@@ -53,8 +53,11 @@ def get_app():
     return _APP
 
 
-def run_review(report: SonarReport) -> ReviewResult:
-    final: GraphState = get_app().invoke({"report": report})
+def run_review(report: SonarReport, policy: GatePolicy = DEFAULT_POLICY) -> ReviewResult:
+    # Drop ignored paths up front so they never appear in triage, fixes, or the table.
+    kept = [i for i in report.issues if not policy.is_ignored(i)]
+    scoped = report.model_copy(update={"issues": kept})
+    final: GraphState = get_app().invoke({"report": scoped, "policy": policy})
     return ReviewResult(
         project=report.project,
         gate=final["gate"],

@@ -10,6 +10,7 @@ from __future__ import annotations
 from app.config import get_settings
 from app.llm import chat_json
 from app.models import FixSuggestion, GraphState, TriagedIssue
+from app.policy import DEFAULT_POLICY
 
 SYSTEM = (
     "You are a staff engineer fixing static-analysis findings. Given one finding, "
@@ -45,8 +46,9 @@ def _user_prompt(t: TriagedIssue) -> str:
 
 def fix_suggest_node(state: GraphState) -> GraphState:
     settings = get_settings()
+    policy = state.get("policy", DEFAULT_POLICY)
     triaged: list[TriagedIssue] = state.get("triaged", [])
-    blocking = [t for t in triaged if _is_blocking(t, settings.blocking_severities)]
+    blocking = [t for t in triaged if _is_blocking(t, policy.blocking_severities)]
     targets = blocking[: settings.max_fix_suggestions]
 
     suggestions: list[FixSuggestion] = []

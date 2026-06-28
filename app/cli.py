@@ -20,6 +20,7 @@ from pathlib import Path
 
 from app.agents.graph import run_review
 from app.models import SonarReport
+from app.policy import POLICY_FILE, GatePolicy, load_policy
 from app.sonar.client import DEFAULT_HOST, fetch_report, load_sample, wait_for_pr_analysis
 
 _DEMO_NOTE = (
@@ -57,6 +58,12 @@ def _load_report(args: argparse.Namespace, source: str, pr: str | None) -> Sonar
     return load_sample()
 
 
+def _load_local_policy() -> GatePolicy:
+    path = Path(POLICY_FILE)
+    text = path.read_text(encoding="utf-8") if path.exists() else None
+    return load_policy(text)
+
+
 def _emit_github_outputs(gate: str, source: str, markdown: str) -> None:
     step_summary = os.getenv("GITHUB_STEP_SUMMARY")
     if step_summary:
@@ -88,9 +95,10 @@ def main(argv: list[str] | None = None) -> int:
 
     source = _resolve_source(args)
     pr = args.pull_request or os.getenv("PR_NUMBER")
+    policy = _load_local_policy()
     try:
         report = _load_report(args, source, pr)
-        result = run_review(report)
+        result = run_review(report, policy)
         gate, reason = result.gate, result.reason
         note = ""
         if source == "sample":
@@ -108,9 +116,11 @@ def main(argv: list[str] | None = None) -> int:
     _emit_github_outputs(gate, source, markdown)
     print(f"\n>>> GATE: {gate} ({source}) — {reason}", file=sys.stderr)
 
+    # Precedence: explicit CLI flag > GATEKEEPER_ENFORCE env > .gatekeeper.yml > default.
     enforce = args.enforce
     if enforce is None:
-        enforce = os.getenv("GATEKEEPER_ENFORCE", "true").lower() != "false"
+        env = os.getenv("GATEKEEPER_ENFORCE")
+        enforce = (env.lower() != "false") if env is not None else policy.enforce
     return 1 if (gate == "FAIL" and enforce) else 0
 
 
