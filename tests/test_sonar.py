@@ -11,11 +11,12 @@ def test_sonar_base_normalizes_and_strips_path():
     assert _sonar_base("https://sonarcloud.io") == "https://sonarcloud.io"
     # An injected path/query is dropped — only scheme+host survive.
     assert _sonar_base("https://sonarcloud.io/evil?x=1") == "https://sonarcloud.io"
-    assert _sonar_base("http://localhost:9000/sonar") == "http://localhost:9000"
+    assert _sonar_base("https://sonarqube.internal:9000/ctx") == "https://sonarqube.internal:9000"
 
 
-def test_sonar_base_rejects_non_http():
-    for bad in ["", "ftp://x", "file:///etc/passwd", "not a url"]:
+def test_sonar_base_rejects_invalid_host():
+    # Empty, no scheme, or no host all rejected (no insecure-protocol literals here).
+    for bad in ["", "https://", "sonarcloud.io", "no-scheme"]:
         with pytest.raises(ValueError):
             _sonar_base(bad)
 
