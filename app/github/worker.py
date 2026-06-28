@@ -36,8 +36,9 @@ def run_job(job: GateJob) -> dict:
     policy_text = get_file(owner, repo, POLICY_FILE, job["head_sha"], token)
     policy = load_policy(policy_text)
 
-    wait_for_pr_analysis(project_key, pr)
-    report = fetch_report(project_key=project_key, pull_request=pr)
+    # Wait for SonarCloud to analyze *this* commit (not a stale prior one).
+    wait_for_pr_analysis(project_key, pr, head_sha=job["head_sha"])
+    report = fetch_report(project_key=project_key, pull_request=pr, include_hotspots=True)
     result = run_review(report, policy)
 
     # Advisory mode (enforce: false): report a failing gate without blocking the merge.

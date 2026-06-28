@@ -63,9 +63,9 @@ variable "lambda_memory_mb" {
 }
 
 variable "lambda_timeout_s" {
-  description = "Lambda timeout (seconds)."
+  description = "Lambda timeout (seconds). The async gate worker waits for SonarCloud's PR analysis, so this must exceed that wait; the webhook path still returns in <1s."
   type        = number
-  default     = 30
+  default     = 240
 }
 
 variable "log_retention_days" {
