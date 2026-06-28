@@ -11,6 +11,7 @@ import json
 import os
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -18,6 +19,19 @@ from app.models import SonarIssue, SonarReport
 
 SAMPLE_PATH = Path(__file__).resolve().parents[2] / "samples" / "sonar_issues.json"
 DEFAULT_HOST = "https://sonarcloud.io"
+
+
+def _sonar_base(host: str) -> str:
+    """Validate and normalize the Sonar host to a bare ``scheme://netloc``.
+
+    The host is operator config (SonarCloud or a self-hosted SonarQube), but it
+    can originate from a CLI flag — so we never trust an injected path/query.
+    Rebuilding from the parsed scheme+host prevents request forgery (SSRF).
+    """
+    parts = urlsplit(host or "")
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        raise ValueError(f"invalid Sonar host: {host!r}")
+    return f"{parts.scheme}://{parts.netloc}"
 
 _VALID_SEVERITIES = {"BLOCKER", "CRITICAL", "MAJOR", "MINOR", "INFO"}
 _VALID_TYPES = {"BUG", "VULNERABILITY", "CODE_SMELL", "SECURITY_HOTSPOT"}
@@ -82,12 +96,13 @@ def fetch_report(
     if pull_request:
         params["pullRequest"] = str(pull_request)
 
+    base = _sonar_base(host)
     issues: list[SonarIssue] = []
     with httpx.Client(timeout=30) as client:
         page = 1
         while True:
             params["p"] = page
-            resp = client.get(f"{host}/api/issues/search", params=params, headers=headers)
+            resp = client.get(f"{base}/api/issues/search", params=params, headers=headers)
             resp.raise_for_status()
             data = resp.json()
             issues.extend(_map_issue(i) for i in data.get("issues", []))
@@ -124,12 +139,13 @@ def fetch_hotspots(
     if pull_request:
         params["pullRequest"] = str(pull_request)
 
+    base = _sonar_base(host)
     out: list[SonarIssue] = []
     with httpx.Client(timeout=30) as client:
         page = 1
         while True:
             params["p"] = page
-            resp = client.get(f"{host}/api/hotspots/search", params=params, headers=headers)
+            resp = client.get(f"{base}/api/hotspots/search", params=params, headers=headers)
             resp.raise_for_status()
             data = resp.json()
             for h in data.get("hotspots", []):
@@ -176,9 +192,10 @@ def pr_analysis_ready(
     """
     token = token or os.getenv("SONAR_TOKEN")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
+    base = _sonar_base(host)
     with httpx.Client(timeout=30) as client:
         resp = client.get(
-            f"{host}/api/project_pull_requests/list",
+            f"{base}/api/project_pull_requests/list",
             params={"project": project_key},
             headers=headers,
         )

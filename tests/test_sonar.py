@@ -2,7 +2,22 @@
 
 from __future__ import annotations
 
-from app.sonar.client import _map_issue, _sha_match, wait_for_pr_analysis
+import pytest
+
+from app.sonar.client import _map_issue, _sha_match, _sonar_base, wait_for_pr_analysis
+
+
+def test_sonar_base_normalizes_and_strips_path():
+    assert _sonar_base("https://sonarcloud.io") == "https://sonarcloud.io"
+    # An injected path/query is dropped — only scheme+host survive.
+    assert _sonar_base("https://sonarcloud.io/evil?x=1") == "https://sonarcloud.io"
+    assert _sonar_base("http://localhost:9000/sonar") == "http://localhost:9000"
+
+
+def test_sonar_base_rejects_non_http():
+    for bad in ["", "ftp://x", "file:///etc/passwd", "not a url"]:
+        with pytest.raises(ValueError):
+            _sonar_base(bad)
 
 
 def test_wait_for_pr_analysis_times_out_without_network():
