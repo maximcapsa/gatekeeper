@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -71,6 +71,7 @@ class GraphState(TypedDict, total=False):
     """Shared state threaded through the LangGraph nodes."""
 
     report: SonarReport
+    policy: Any  # app.policy.GatePolicy; kept loose to avoid a models<->policy cycle
     triaged: list[TriagedIssue]
     security_findings: list[TriagedIssue]
     fix_suggestions: list[FixSuggestion]

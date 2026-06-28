@@ -30,10 +30,8 @@ class Settings(BaseSettings):
     model_fix: str = "llama-3.3-70b-versatile"
     model_summary: str = "llama-3.1-8b-instant"
 
-    # Gate policy: open issues at these severities block the merge.
-    blocking_severities: tuple[str, ...] = ("BLOCKER", "CRITICAL")
-
-    # How many top issues the fix-suggestion agent will draft patches for.
+    # Gate policy (blocking severities, vuln rules, ignore_paths) is per-repo —
+    # see app/policy.py and .gatekeeper.yml. This is just the fix-agent budget.
     max_fix_suggestions: int = 3
 
     @property

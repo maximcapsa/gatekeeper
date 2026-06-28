@@ -139,6 +139,26 @@ first-class status — branch protection can **require** it to block merges.
 3. Add a branch-protection rule on `main` requiring the **GateKeeper** check — a failed
    gate now blocks the merge.
 
+### Per-repo policy (`.gatekeeper.yml`)
+
+Each repo tunes its own gate by committing a `.gatekeeper.yml` at the root. It's read at
+PR time (from the PR's head commit), so policy changes are reviewed like any other code.
+A missing or malformed file falls back to the defaults — the gate never breaks on bad
+config. This is what makes the App multi-tenant: one deployment, per-repo rules.
+
+```yaml
+blocking_severities: [BLOCKER, CRITICAL]   # severities that block the merge
+fail_on_vulnerability: true                # any open vulnerability fails the gate
+fail_on_security_hotspot: false            # hotspots are advisory by default
+enforce: true                              # false = post a neutral check, don't block
+ignore_paths:                              # findings in these globs are excluded
+  - "tests/**"
+  - "samples/**"
+```
+
+The same file is honored by the `app.cli` entrypoint when run locally or in CI, so the
+gate behaves identically everywhere.
+
 ## Deploy to AWS (Free Tier)
 
 The FastAPI service ships as an **AWS Lambda container image** behind **API
@@ -195,7 +215,8 @@ references the account's existing OIDC provider.
 - [x] **M2** — Live SonarCloud integration (`/api/issues/search`) on real findings
 - [x] Enhancement — diff-aware triage (flag only issues new in the PR)
 - [x] **P1** — Installable **GitHub App**: webhook → Lambda → **Check Run** gate
-- [ ] **P2** — Multi-tenant: per-repo `.gatekeeper.yml`, config in DynamoDB, Secrets Manager
+- [x] **P2a** — Multi-tenant **per-repo policy** (`.gatekeeper.yml`): severities, vuln/hotspot rules, ignore paths, advisory mode
+- [ ] **P2b** — Tenant config in DynamoDB + secrets in Secrets Manager
 - [ ] **M5** — Observability (CloudWatch dashboards/alarms), run history in DynamoDB
 
 ---
@@ -206,9 +227,10 @@ references the account's existing OIDC provider.
 .github/workflows/   ci.yml (lint+tests), deploy.yml (OIDC deploy)
 app/
   main.py            FastAPI app (/health, /review, /webhook/sonar, /webhook/github)
-  github/            GitHub App: webhook verify, auth (JWT/token), checks, worker
+  github/            GitHub App: webhook verify, auth (JWT/token), repo files, checks, worker
   lambda_handler.py  Mangum adapter + async gate worker (Lambda entrypoint)
   cli.py             CI entrypoint: fetch -> gate -> report -> exit code
+  policy.py          per-repo .gatekeeper.yml policy (severities, ignore paths, enforce)
   config.py          settings + mock-mode toggle
   models.py          SonarQube + agent-output models, graph state
   llm.py             Groq client wrapper

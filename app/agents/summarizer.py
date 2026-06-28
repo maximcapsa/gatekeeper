@@ -11,6 +11,7 @@ from __future__ import annotations
 from app.config import get_settings
 from app.llm import chat_json
 from app.models import FixSuggestion, GraphState, TriagedIssue
+from app.policy import DEFAULT_POLICY, GatePolicy
 
 HEADLINE_SYSTEM = (
     "You write a single-sentence headline summarizing a code-quality gate result "
@@ -18,17 +19,25 @@ HEADLINE_SYSTEM = (
 )
 
 
-def _decide_gate(triaged: list[TriagedIssue], security: list[TriagedIssue]) -> tuple[str, str]:
-    blocking = get_settings().blocking_severities
+def _decide_gate(
+    triaged: list[TriagedIssue],
+    security: list[TriagedIssue],
+    policy: GatePolicy,
+) -> tuple[str, str]:
+    blocking = policy.blocking_severities
     blockers = [t for t in triaged if t.issue.severity in blocking]
     vulns = [t for t in security if t.issue.type == "VULNERABILITY"]
+    hotspots = [t for t in security if t.issue.type == "SECURITY_HOTSPOT"]
 
-    if blockers or vulns:
-        bits = []
-        if blockers:
-            bits.append(f"{len(blockers)} blocking issue(s) ({'/'.join(blocking)})")
-        if vulns:
-            bits.append(f"{len(vulns)} open vulnerability(ies)")
+    bits = []
+    if blockers:
+        bits.append(f"{len(blockers)} blocking issue(s) ({'/'.join(blocking)})")
+    if policy.fail_on_vulnerability and vulns:
+        bits.append(f"{len(vulns)} open vulnerability(ies)")
+    if policy.fail_on_security_hotspot and hotspots:
+        bits.append(f"{len(hotspots)} security hotspot(s)")
+
+    if bits:
         return "FAIL", "Gate failed: " + " and ".join(bits) + "."
     return "PASS", "Gate passed: no blocking issues or open vulnerabilities."
 
@@ -97,11 +106,12 @@ def _render_markdown(
 def summarizer_node(state: GraphState) -> GraphState:
     settings = get_settings()
     report = state["report"]
+    policy: GatePolicy = state.get("policy", DEFAULT_POLICY)
     triaged: list[TriagedIssue] = state.get("triaged", [])
     security: list[TriagedIssue] = state.get("security_findings", [])
     fixes: list[FixSuggestion] = state.get("fix_suggestions", [])
 
-    gate, reason = _decide_gate(triaged, security)
+    gate, reason = _decide_gate(triaged, security, policy)
 
     headline = reason
     if not settings.use_mock:

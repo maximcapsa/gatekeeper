@@ -1,0 +1,19 @@
+# GateKeeper policy for this repo. Read at PR time by the GitHub App (and the CLI).
+# Anything you omit falls back to the defaults shown below.
+
+# Open issues at these severities block the merge.
+blocking_severities: [BLOCKER, CRITICAL]
+
+# Any open vulnerability fails the gate regardless of severity.
+fail_on_vulnerability: true
+
+# Security hotspots are advisory by default (they need human review, not a hard block).
+fail_on_security_hotspot: false
+
+# false = advisory only: a failed gate posts a neutral check instead of blocking.
+enforce: true
+
+# Findings whose file matches any of these globs are excluded entirely.
+ignore_paths:
+  - "tests/**"
+  - "samples/**"
