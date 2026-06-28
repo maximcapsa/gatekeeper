@@ -51,14 +51,24 @@ def _map_issue(raw: dict) -> SonarIssue:
     )
 
 
+# SonarCloud rates hotspots by review priority, not severity. Map to our scale
+# so they rank and display sensibly alongside issues.
+_HOTSPOT_SEVERITY = {"HIGH": "CRITICAL", "MEDIUM": "MAJOR", "LOW": "MINOR"}
+
+
 def fetch_report(
     project_key: str,
     pull_request: str | None = None,
     host: str = DEFAULT_HOST,
     token: str | None = None,
     page_size: int = 500,
+    include_hotspots: bool = False,
 ) -> SonarReport:
-    """Fetch open issues for a project (optionally scoped to a pull request)."""
+    """Fetch open issues for a project (optionally scoped to a pull request).
+
+    Security Hotspots live behind a separate API; pass ``include_hotspots`` to
+    fold the unreviewed ones in as SECURITY_HOTSPOT findings.
+    """
     token = token or os.getenv("SONAR_TOKEN")
     if not project_key:
         raise ValueError("project_key is required to fetch from SonarCloud")
@@ -86,6 +96,9 @@ def fetch_report(
                 break
             page += 1
 
+    if include_hotspots:
+        issues.extend(fetch_hotspots(project_key, pull_request, host, token))
+
     return SonarReport(
         project=project_key,
         pull_request=str(pull_request) if pull_request else None,
@@ -93,13 +106,74 @@ def fetch_report(
     )
 
 
+def fetch_hotspots(
+    project_key: str,
+    pull_request: str | None = None,
+    host: str = DEFAULT_HOST,
+    token: str | None = None,
+    page_size: int = 500,
+) -> list[SonarIssue]:
+    """Fetch unreviewed Security Hotspots as SECURITY_HOTSPOT findings."""
+    token = token or os.getenv("SONAR_TOKEN")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    params: dict[str, str | int] = {
+        "projectKey": project_key,
+        "status": "TO_REVIEW",
+        "ps": page_size,
+    }
+    if pull_request:
+        params["pullRequest"] = str(pull_request)
+
+    out: list[SonarIssue] = []
+    with httpx.Client(timeout=30) as client:
+        page = 1
+        while True:
+            params["p"] = page
+            resp = client.get(f"{host}/api/hotspots/search", params=params, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            for h in data.get("hotspots", []):
+                prob = h.get("vulnerabilityProbability", "MEDIUM")
+                out.append(
+                    SonarIssue(
+                        key=h.get("key", ""),
+                        rule=h.get("ruleKey", ""),
+                        severity=_HOTSPOT_SEVERITY.get(prob, "MAJOR"),
+                        type="SECURITY_HOTSPOT",
+                        component=h.get("component", ""),
+                        line=h.get("line"),
+                        message=h.get("message", ""),
+                        status=h.get("status", "TO_REVIEW"),
+                    )
+                )
+            total = data.get("paging", {}).get("total", len(out))
+            if not data.get("hotspots") or page * page_size >= total:
+                break
+            page += 1
+    return out
+
+
+def _sha_match(analyzed: str, head: str) -> bool:
+    """Tolerant SHA comparison (either may be an abbreviation of the other)."""
+    if not analyzed or not head:
+        return False
+    n = min(len(analyzed), len(head))
+    return analyzed[:n].lower() == head[:n].lower()
+
+
 def pr_analysis_ready(
     project_key: str,
     pull_request: str,
     host: str = DEFAULT_HOST,
     token: str | None = None,
+    head_sha: str | None = None,
 ) -> bool:
-    """True once SonarCloud has analyzed this pull request at least once."""
+    """True once SonarCloud has analyzed this pull request.
+
+    When ``head_sha`` is given, require the analyzed commit to match it — so a
+    push to an existing PR isn't gated against the *previous* commit's stale
+    analysis (the PR is already in the list from before).
+    """
     token = token or os.getenv("SONAR_TOKEN")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     with httpx.Client(timeout=30) as client:
@@ -111,8 +185,11 @@ def pr_analysis_ready(
         if resp.status_code != 200:
             return False
         for pr in resp.json().get("pullRequests", []):
-            if str(pr.get("key")) == str(pull_request) and pr.get("analysisDate"):
-                return True
+            if str(pr.get("key")) != str(pull_request) or not pr.get("analysisDate"):
+                continue
+            if head_sha:
+                return _sha_match((pr.get("commit") or {}).get("sha", ""), head_sha)
+            return True
     return False
 
 
@@ -121,18 +198,19 @@ def wait_for_pr_analysis(
     pull_request: str,
     host: str = DEFAULT_HOST,
     token: str | None = None,
-    timeout_s: float = 120,
+    timeout_s: float = 150,
     interval_s: float = 8,
+    head_sha: str | None = None,
 ) -> bool:
-    """Poll until the PR has a SonarCloud analysis, or the timeout elapses.
+    """Poll until the PR's analysis is ready (for ``head_sha`` if given).
 
-    Avoids the race where the gate fetches findings before automatic analysis
-    of the PR has landed. Best-effort: returns False on timeout so the caller
-    can proceed anyway.
+    Avoids the race where the gate fetches findings before SonarCloud has
+    analyzed the current commit. Best-effort: returns False on timeout so the
+    caller can proceed anyway.
     """
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        if pr_analysis_ready(project_key, pull_request, host, token):
+        if pr_analysis_ready(project_key, pull_request, host, token, head_sha):
             return True
         time.sleep(interval_s)
     return False
