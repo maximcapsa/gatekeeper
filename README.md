@@ -6,8 +6,8 @@
 GateKeeper turns raw **SonarQube / SonarCloud** static-analysis findings into an
 actionable PR review and a merge **pass/fail gate**. A **LangGraph** multi-agent
 system — triage, security, fix-suggestion, and summarizer agents — runs behind a
-**FastAPI** service and is wired into CI so every pull request gets reviewed
-automatically.
+**FastAPI** service and is installed as a **GitHub App**, so every pull request on
+any repo it's installed on gets reviewed automatically.
 
 Built as a DevOps portfolio project: CI/CD, a real quality gate, containerization,
 Infrastructure-as-Code, and practical multi-agent AI — designed to run on the
@@ -21,17 +21,42 @@ Infrastructure-as-Code, and practical multi-agent AI — designed to run on the
 
 ---
 
+## In action
+
+When a PR introduces a vulnerability, GateKeeper posts a failing **Check Run** that
+branch protection uses to block the merge. This is the summary it writes:
+
+<!-- Optional: drop a real screenshot at docs/check-run.png and uncomment:
+![GateKeeper blocking a PR](docs/check-run.png) -->
+
+**❌ GateKeeper — FAIL** &nbsp;·&nbsp; _Pull request failed due to 1 open vulnerability._
+&nbsp;·&nbsp; **Project:** `maximcapsa_devops-rag-chatbot` &nbsp;·&nbsp; **Findings:** 2 open &nbsp;·&nbsp; **Security:** 2
+
+| Priority | Severity | Type | Location | Why it matters |
+|---|---|---|---|---|
+| 0 | MAJOR | VULNERABILITY | `app/insecure_demo.py:14` | A hard-coded password poses a significant risk of unauthorized access… |
+
+Remove the finding and the next push flips it green — **✅ GateKeeper — PASS** _(0 open
+findings)_ — because the gate reads **that commit's** analysis, not a stale one.
+
+The gate is a **first-class Check Run** (not a comment), so `Require status checks`
+on the protected branch makes a red result actually block the merge.
+
+---
+
 ## Architecture
 
 ```
-PR opened ─▶ CI (GitHub Actions) ─▶ SonarCloud scan ─▶ webhook ─▶ FastAPI (AWS Lambda)
-                                                                      │
-                                                        LangGraph orchestrator
-                                                        ┌──────┬─────────┬───────────┐
-                                                     triage  security  fix_suggest  summarizer
-                                                        └──────┴─────────┴───────────┘
-                                                                      │
-                                       Check Run posted to the PR = pass/fail merge gate
+PR opened ─▶ SonarCloud analyzes the PR
+          ─▶ GitHub webhook ─▶ FastAPI (AWS Lambda)
+                                   │  (waits for that commit's SonarCloud analysis)
+                                   ▼
+                         LangGraph orchestrator
+                         ┌──────┬─────────┬───────────┐
+                      triage  security  fix_suggest  summarizer
+                         └──────┴─────────┴───────────┘
+                                   │
+                Check Run posted to the PR = pass/fail merge gate
 ```
 
 **The graph:** `START → triage → security → (fix_suggest?) → summarizer → END`.
@@ -43,7 +68,7 @@ blocking issues, so the stronger model is only used when it's needed.
 | **triage** | Rank + dedupe findings (deterministic), add a one-line rationale each | `llama-3.1-8b-instant` |
 | **security** | Isolate vulnerabilities & security hotspots | deterministic |
 | **fix_suggest** | Draft a patch for the top blocking issues | `llama-3.3-70b-versatile` |
-| **summarizer** | Decide the gate + render the Markdown PR comment | `llama-3.1-8b-instant` |
+| **summarizer** | Decide the gate + render the Markdown Check Run summary | `llama-3.1-8b-instant` |
 
 The **gate decision is a pure function** of the findings (never model-dependent),
 so it's auditable and reproducible. The LLM adds explanation and fixes on top.
@@ -99,8 +124,8 @@ This project is deliberately engineered to cost ~nothing for a portfolio:
   model only on blocking issues (conditional edge). Mock mode for CI/tests.
 - **Static analysis** — SonarCloud is free for public repositories.
 - **CI** — GitHub Actions is free for public repositories.
-- **Compute (planned)** — AWS Lambda (1M free req/mo) + API Gateway free tier;
-  DynamoDB (25 GB free), S3, and ECR (500 MB) all within free tier.
+- **Compute** — AWS Lambda (1M free req/mo) + API Gateway free tier; S3 + DynamoDB
+  (Terraform state) and ECR (500 MB) all within free tier.
 - **Bedrock note** — Amazon Bedrock would be the most "AWS-native" LLM path but is
   not free tier; Groq is used to keep the build free, with Bedrock documented as
   the enterprise swap-in.
@@ -210,12 +235,13 @@ references the account's existing OIDC provider.
 ## Roadmap
 
 - [x] **M1** — Multi-agent LangGraph + FastAPI, runs locally against a sample payload
-- [x] **M4** — GitHub Actions pipeline: gate → post PR comment → block merge
+- [x] **M4** — GitHub Actions PR gate (later superseded by the GitHub App in P1)
 - [x] **M3** — Containerize (Docker/ECR), deploy Lambda + API Gateway via Terraform
 - [x] **M2** — Live SonarCloud integration (`/api/issues/search`) on real findings
 - [x] Enhancement — diff-aware triage (flag only issues new in the PR)
 - [x] **P1** — Installable **GitHub App**: webhook → Lambda → **Check Run** gate
 - [x] **P2a** — Multi-tenant **per-repo policy** (`.gatekeeper.yml`): severities, vuln/hotspot rules, ignore paths, advisory mode
+- [x] Hardening — SHA-aware analysis wait (no stale reads), Security Hotspots, longer worker timeout
 - [ ] **P2b** — Tenant config in DynamoDB + secrets in Secrets Manager
 - [ ] **M5** — Observability (CloudWatch dashboards/alarms), run history in DynamoDB
 
@@ -237,7 +263,7 @@ app/
   agents/
     graph.py         LangGraph wiring + run_review()
     triage.py  security.py  fix_suggest.py  summarizer.py
-  sonar/client.py    sample loading + live SonarCloud fetch
+  sonar/client.py    sample loading + live SonarCloud fetch (issues + hotspots, SHA-aware wait)
 terraform/           ECR, IAM, Lambda, API Gateway, CloudWatch, OIDC role (IaC)
 Dockerfile           Lambda container image
 Makefile             local + deploy targets
